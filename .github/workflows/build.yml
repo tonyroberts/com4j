@@ -31,20 +31,33 @@ jobs:
           cmake --version
           java -version
 
-      # The com4j.dll build (both x86 and x64) is wired into the root
-      # pom.xml's "windows" profile via CMake, but it's opt-in: a plain
-      # `mvn package` just packages the Release DLLs already committed
-      # under bin/x86 and bin/x64 (that's what lets JitPack, which can't
-      # run a Windows/MSVC build at all, build this project). -DbuildNative
-      # =true here makes CI actually rebuild them from source (mode
-      # defaults to Release), so a native-code regression fails the build
-      # instead of silently packaging stale committed binaries.
-      #
-      # The "test" module is excluded for now: it needs a Debug native
-      # build registered as a COM server (regsvr32, elevated) before its
-      # code-generation step can run, which this workflow doesn't set up
-      # yet. This just builds the com4j jar (and the other non-test
-      # modules); running the test suite in CI is a follow-up.
-      - name: Build with Maven
+      # -DbuildNative=true forces a real rebuild instead of packaging the
+      # committed bin/ DLLs (JitPack's only option, since it can't run
+      # MSVC). package-only, run first, just to catch Release-only compile
+      # regressions before the Debug build below becomes the installed jar.
+      - name: Build native (Release)
         shell: pwsh
-        run: mvn -B -pl "!test" package -DbuildNative=true
+        run: mvn -B -pl "!test" package -DbuildNative=true -Dmode=Release
+
+      # TestObject (needed by tests) only compiles into Debug builds.
+      # install, not package, so "Run tests" below can resolve com4j from
+      # the local repo without rebuilding or needing -am.
+      - name: Build native (Debug)
+        shell: pwsh
+        run: mvn -B -pl "!test" install -DbuildNative=true -Dmode=Debug
+
+      # Registers com4j.dll as TestObject's COM server. Plain regsvr32
+      # works unelevated: GitHub's Windows runners run as Administrator
+      # with UAC disabled (actions/runner-images discussion #6557).
+      - name: Register COM test object
+        shell: pwsh
+        run: |
+          $dll = Resolve-Path "bin\x64\Debug\com4j.dll"
+          $p = Start-Process -FilePath "$env:SystemRoot\System32\regsvr32.exe" -ArgumentList "/s", "$dll" -Wait -PassThru -NoNewWindow
+          if ($p.ExitCode -ne 0) {
+            throw "regsvr32 failed with exit code $($p.ExitCode)"
+          }
+
+      - name: Run tests
+        shell: pwsh
+        run: mvn -B test -pl test
