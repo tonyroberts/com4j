@@ -1,0 +1,50 @@
+name: Build
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    # windows-2022 ships Visual Studio 2022 (with the C++ ATL and MFC
+    # components the native build needs) and CMake preinstalled.
+    runs-on: windows-2022
+
+    steps:
+      - name: Check out repository (with submodules)
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      - name: Show build tool versions
+        shell: pwsh
+        run: |
+          cmake --version
+          java -version
+
+      # The com4j.dll build (both x86 and x64) is wired into the root
+      # pom.xml's "windows" profile via CMake, but it's opt-in: a plain
+      # `mvn package` just packages the Release DLLs already committed
+      # under bin/x86 and bin/x64 (that's what lets JitPack, which can't
+      # run a Windows/MSVC build at all, build this project). -DbuildNative
+      # =true here makes CI actually rebuild them from source (mode
+      # defaults to Release), so a native-code regression fails the build
+      # instead of silently packaging stale committed binaries.
+      #
+      # The "test" module is excluded for now: it needs a Debug native
+      # build registered as a COM server (regsvr32, elevated) before its
+      # code-generation step can run, which this workflow doesn't set up
+      # yet. This just builds the com4j jar (and the other non-test
+      # modules); running the test suite in CI is a follow-up.
+      - name: Build with Maven
+        shell: pwsh
+        run: mvn -B -pl "!test" package -DbuildNative=true
