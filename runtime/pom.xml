@@ -21,8 +21,8 @@
             <phase>generate-resources</phase>
             <configuration>
               <target>
-                <copy file="../native/${mode}/com4j.dll" tofile="target/classes/com4j/com4j-x86.dll" />
-                <copy file="../native/x64/${mode}/com4j.dll" tofile="target/classes/com4j/com4j-amd64.dll" />
+                <copy file="../bin/x86/${mode}/com4j.dll" tofile="target/classes/com4j/com4j-x86.dll" />
+                <copy file="../bin/x64/${mode}/com4j.dll" tofile="target/classes/com4j/com4j-amd64.dll" />
               </target>
             </configuration>
             <goals>
